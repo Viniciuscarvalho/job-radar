@@ -1,0 +1,10 @@
+{
+  "name": "Your Name",
+  "location": "Brazil",
+  "regions": ["Brazil", "LATAM", "Latin America", "Worldwide", "Remote"],
+  "roles": ["Senior Software Engineer"],
+  "skills": [],
+  "keywords": [],
+  "excludeCompanies": [],
+  "minSalaryUsdAnnual": 0
+}
