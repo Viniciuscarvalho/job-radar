@@ -5,6 +5,7 @@
 /data/job-radar.db
 /data/uploads/
 /data/profile.json
+/profile.json
 /data/logs/
 
 # environment

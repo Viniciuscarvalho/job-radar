@@ -1,0 +1,20 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const { buildServer } = require('../server');
+test('onboarding validates a confirmed profile and runs matching only after confirmation', async () => {
+  fs.rmSync(process.env.JOB_RADAR_PROFILE_PATH, { force: true });
+  fs.rmSync(process.env.JOB_RADAR_UPLOADS_PATH, { force: true, recursive: true });
+  const server = buildServer({ scanRunner: async () => ({ found: 0, sources: {} }), parseResumeFn: async () => ({ name: 'Ada', roles: ['Backend Engineer'], skills: ['Node.js'] }) });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const parsed = await fetch(`${base}/api/profile/resume`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'ada.pdf', data: 'data:application/pdf;base64,ZmFrZQ==' }) });
+  assert.deepEqual((await parsed.json()).draft.roles, ['Backend Engineer']);
+  const beforeConfirmation = await fetch(`${base}/api/profile`);
+  assert.deepEqual((await beforeConfirmation.json()).roles, []);
+  const invalid = await fetch(`${base}/api/onboarding/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile: {} }) });
+  assert.equal(invalid.status, 422);
+  const valid = await fetch(`${base}/api/onboarding/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile: { roles: ['Backend Engineer'], workEligibility: ['Brazil'], keepResume: false } }) });
+  assert.equal(valid.status, 200); assert.equal((await valid.json()).scan.found, 0); assert.equal(fs.existsSync(process.env.JOB_RADAR_UPLOADS_PATH), false);
+  await new Promise(resolve => server.close(resolve));
+});

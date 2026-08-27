@@ -1,11 +1,34 @@
 const path = require('path');
-const SKILLS=['Swift','SwiftUI','UIKit','Objective-C','Swift Concurrency','Combine','Core Data','SwiftData','XCTest','XCUITest','SPM','Swift Package Manager','CocoaPods','Tuist','Fastlane','GitHub Actions','CI/CD','Firebase','Crashlytics','Datadog','Sentry','Bugsnag','Instruments','MVVM','VIPER','Clean Architecture','Server-Driven UI','SDUI','Design Systems','Modularization','REST','GraphQL','Python','JavaScript','TypeScript','Node.js','React','Kotlin','Java','Go','Ruby','AWS','Docker','Kubernetes','SQL','SQLite','PostgreSQL','LLM','RAG','MCP','Claude Code','Codex','GitHub Copilot','AI Agents','Generative AI','Machine Learning','Technical Leadership','Mentoring','System Design','Observability','Performance Optimization'];
-const ROLE_PATTERNS=[['Staff Software Engineer',/staff\s+(software|mobile|ios|android)?\s*engineer/i],['Senior Software Engineer',/senior\s+software\s+engineer/i],['Senior iOS Engineer',/senior\s+(ios|mobile).*engineer|senior\s+ios\s+(developer|engineer)/i],['Staff Mobile Engineer',/staff\s+mobile/i],['Lead Mobile Engineer',/(lead|principal)\s+(mobile|ios)/i],['Software Engineer',/software\s+engineer/i]];
-const normalize=s=>String(s||'').replace(/\s+/g,' ').trim();
-function inferLocation(text){const m=text.match(/(?:São Paulo|Sao Paulo|Rio de Janeiro|Fortaleza|Brazil|Brasil|Argentina|Mexico|México|Colombia|Chile|Peru|Uruguay|United States|Canada|Portugal|Spain)/i);return m?m[0].replace('Brasil','Brazil'):'Remote';}
-function extractSkills(text){const lower=text.toLowerCase();return [...new Set(SKILLS.filter(s=>lower.includes(s.toLowerCase())))];}
-function extractRoles(text){const roles=ROLE_PATTERNS.filter(([,re])=>re.test(text)).map(([r])=>r);return roles.length?[...new Set(roles)].slice(0,6):['Senior Software Engineer'];}
-function extractName(text){return text.split(/\r?\n/).map(normalize).filter(Boolean).find(x=>x.length>2&&x.length<70&&!/@|https?:|linkedin|github/i.test(x))||'Job Seeker';}
-function profileFromText(text,filename='resume.pdf'){const skills=extractSkills(text);return{name:extractName(text),location:inferLocation(text),regions:['Brazil','LATAM','Latin America','Worldwide','Remote'],roles:extractRoles(text),skills,keywords:skills,resumeFile:filename,resumeParsedAt:new Date().toISOString(),resumeText:normalize(text).slice(0,50000)};}
-async function parseResume(buffer,filename){const ext=path.extname(filename||'').toLowerCase();if(ext==='.txt'||ext==='.md')return profileFromText(buffer.toString('utf8'),filename);if(ext!=='.pdf')throw new Error('V2 currently supports PDF, TXT and Markdown resumes.');const pdf=require('pdf-parse');const result=await pdf(buffer);if(!result.text||result.text.trim().length<80)throw new Error('Could not extract enough text from this PDF. Use a text-based ATS-friendly PDF.');return profileFromText(result.text,filename);}
-module.exports={parseResume,profileFromText,extractSkills};
+
+const SKILL_ALIASES = {
+  'Node.js': ['node.js', 'node', 'nodejs'], 'React Native': ['react native', 'rn'], TypeScript: ['typescript', 'ts'], JavaScript: ['javascript', 'js'],
+  'C#': ['c#', 'csharp'], '.NET': ['.net', 'dotnet'], AWS: ['aws', 'amazon web services'], Docker: ['docker'], Kubernetes: ['kubernetes', 'k8s'],
+  Python: ['python'], React: ['react'], Swift: ['swift'], SwiftUI: ['swiftui'], Kotlin: ['kotlin'], Java: ['java'], Go: ['golang', 'go'],
+  SQL: ['sql'], GraphQL: ['graphql'], REST: ['rest', 'restful'], 'CI/CD': ['ci/cd', 'continuous integration', 'continuous delivery'],
+};
+
+class ResumeParseError extends Error { constructor(code, message) { super(message); this.code = code; } }
+const normalise = value => String(value || '').replace(/\s+/g, ' ').trim();
+const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const includesAlias = (text, alias) => new RegExp(`(^|[^a-z0-9.])${escape(alias.toLowerCase())}($|[^a-z0-9.])`, 'i').test(text);
+const lines = text => String(text || '').split(/\r?\n/).map(normalise).filter(Boolean);
+function extractSkills(text) { return Object.entries(SKILL_ALIASES).filter(([, aliases]) => aliases.some(alias => includesAlias(text, alias))).map(([skill]) => skill); }
+function extractName(text) { return lines(text).find(line => line.length > 2 && line.length < 70 && !/@|https?:|linkedin|github/i.test(line)) || ''; }
+function extractRoles(text) { const pattern = /(?:senior|junior|staff|principal|lead|mid-level)?\s*(?:software|frontend|backend|full[ -]?stack|mobile|ios|android|data|platform|devops|product|design)\s*(?:engineer|developer|designer|manager)/gi; return [...new Set((text.match(pattern) || []).map(normalise))].slice(0, 8); }
+function profileFromText(text, filename) {
+  const cleaned = normalise(text);
+  if (cleaned.length < 80) throw new ResumeParseError('NO_EXTRACTABLE_TEXT', 'We could not extract enough text from this file. Use a text-based PDF/DOCX or enter your profile manually.');
+  const skills = extractSkills(text);
+  return { name: extractName(text), roles: extractRoles(text), skills, keywords: skills, extractedFrom: path.basename(filename || 'resume'), aliases: skills.map(skill => ({ skill, matchedAs: SKILL_ALIASES[skill] })) };
+}
+async function textFromDocument(buffer, filename, readers = {}) {
+  const extension = path.extname(filename || '').toLowerCase();
+  if (extension === '.pdf') return (await (readers.pdf || require('pdf-parse'))(buffer)).text;
+  if (extension === '.docx') return (await (readers.docx || require('mammoth')).extractRawText({ buffer })).value;
+  throw new ResumeParseError('UNSUPPORTED_FORMAT', 'Upload a PDF or DOCX resume.');
+}
+async function parseResume(buffer, filename, readers) {
+  try { return profileFromText(await textFromDocument(buffer, filename, readers), filename); }
+  catch (error) { if (error instanceof ResumeParseError) throw error; throw new ResumeParseError('UNREADABLE_DOCUMENT', 'We could not read this resume. Use a text-based PDF/DOCX or enter your profile manually.'); }
+}
+module.exports = { ResumeParseError, SKILL_ALIASES, extractSkills, profileFromText, parseResume };

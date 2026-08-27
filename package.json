@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "description": "Local-first open-source job radar with resume parsing, ATS matching and application tracking",
-  "scripts": {"start": "node server.js", "scan": "node scanner.js"},
+  "scripts": {"start": "node server.js", "scan": "node scanner.js", "test": "JOB_RADAR_PROFILE_PATH=/tmp/job-radar-test-profile.json JOB_RADAR_DB_PATH=/tmp/job-radar-test.db JOB_RADAR_UPLOADS_PATH=/tmp/job-radar-test-uploads node --test"},
   "engines": {"node": ">=22"},
-  "dependencies": {"pdf-parse": "^1.1.1"}
+  "dependencies": {"mammoth": "^1.8.0", "pdf-parse": "^1.1.1"}
 }
