@@ -1,0 +1,9 @@
+{
+  "name": "latam-job-radar",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Local-first open-source job radar with resume parsing, ATS matching and application tracking",
+  "scripts": {"start": "node server.js", "scan": "node scanner.js"},
+  "engines": {"node": ">=22"},
+  "dependencies": {"pdf-parse": "^1.1.1"}
+}
