@@ -1,61 +1,162 @@
 # Job Radar
 
-A simple, fast, local-first and open-source career dashboard. Upload a resume, let Job Radar extract a candidate profile, discover compatible remote jobs, rank them for ATS fit, and track applications from saved to offer.
+**A private, local-first job radar that turns a confirmed resume profile into explainable job matches.**
 
-## Highlights
-- **Three-step resume onboarding.** Upload a text-based PDF or DOCX (10 MB max), review the locally extracted profile, then confirm preferences before Job Radar searches for matches.
-- Required target roles and work eligibility/location are strict filters. Salary, job type, seniority, work mode and excluded companies are optional preferences.
-- Results are transparent **Excellent (85%+)**, **Strong (70–84%)**, or **Potential** matches, with a 55% skills, 25% role, 10% seniority and 10% preference breakdown.
-- Candidate-driven discovery: job queries and relevance filters are generated from the current profile instead of being hard-coded to iOS.
-- Brazil-based candidates are eligible for **Brazil, LATAM, Latin America, Worldwide and Global Remote** roles.
-- Existing submissions stay visible in `Saved → Applied → Interview → Offer / Rejected`.
-- Transparent deterministic ATS matching: matched and missing terms are visible; Job Radar never invents experience.
-- Responsive local dashboard that works from a phone on the same network.
-- Privacy-first: parsing never sends a resume to a third party. The original document is discarded after extraction unless the person explicitly chooses to keep it locally.
+[![Node.js 22+](https://img.shields.io/badge/node-%3E%3D22-339933.svg)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Privacy: local-first](https://img.shields.io/badge/privacy-local--first-7b2cbf.svg)](#privacy)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](#contributing)
+
+Job Radar is an open-source career dashboard for people who want to discover remote roles without uploading their resume to an AI service or opaque matching platform. It extracts an editable profile locally, applies the job-search criteria the person confirms, explains every ranking, and keeps application tracking on their own machine.
+
+## Why Job Radar?
+
+- **Own your search data:** resume parsing, profile data, SQLite data, and application history stay local by default.
+- **Review before matching:** resume extraction creates an editable draft; no job scan starts until the person confirms it.
+- **See why a role appears:** every result exposes matched skills, requirements to verify, and a visible score breakdown.
+- **Avoid irrelevant roles:** target roles and work eligibility/location are strict filters, not weak score boosts.
+- **Keep the human in control:** Job Radar opens the original job source for applications and tracks progress locally; it never auto-applies or invents experience.
+
+## When to use it
+
+Use Job Radar when you want a lightweight, self-hosted way to prioritize remote opportunities and maintain a personal application pipeline.
+
+It is not an employer ATS, an account-based SaaS product, an OCR tool for scanned resumes, or an automated job-application bot. It currently supports one local profile per installation.
 
 ## Quick start
-Requires Node.js 22+.
+
+Requirements: Node.js 22+ and an internet connection when scanning public job sources.
 
 ```bash
+git clone https://github.com/Viniciuscarvalho/job-radar.git
+cd job-radar
 npm install
-cp profile.example.json data/profile.json
 npm start
 ```
 
-Open `http://localhost:3000`. The server also prints a LAN URL for your phone.
+Open [http://localhost:3000](http://localhost:3000).
+
+If port 3000 is already in use, choose another port:
+
+```bash
+PORT=3001 npm start
+```
 
 ## First run
-1. Upload an ATS-friendly, text-based PDF or DOCX resume (10 MB max), or choose manual entry.
-2. Review the extracted name, target roles and skills; edit them as needed.
-3. Set required work eligibility/location and optional search preferences.
-4. Select **Find my matches**. Job Radar scans and ranks only jobs that meet the required criteria.
-5. Open a role to inspect ATS match/gaps, then track the application stage.
 
-Scanned/image-only PDFs are intentionally not OCR'd: local OCR adds significant complexity and can produce misleading ATS data. Use a text-based PDF/DOCX or enter the profile manually.
+1. Upload a text-based PDF or DOCX resume (10 MB maximum), or choose **Enter manually**.
+2. Review the extracted name, target roles, and skills; change or remove anything that is inaccurate.
+3. Confirm at least one target role and one work eligibility/location, then optionally set salary, job type, seniority, work mode, and excluded companies.
+4. Select **Find my matches** to scan public sources and rank eligible roles.
+5. Open **Why this match** to inspect the evidence, then open the original source to apply and track the stage locally.
 
-## Sources
-- Remotive public API
-- RemoteOK public API
-- Optional Brave Search discovery for public LinkedIn job pages/posts plus Lever, Greenhouse and Ashby pages
+Scanned or image-only PDFs are not OCR'd. Use a text-based PDF/DOCX or enter the profile manually instead.
 
-Set `BRAVE_SEARCH_API_KEY` in your environment to enable discovery. Job Radar does **not** scrape authenticated LinkedIn pages.
+## How it works
+
+```text
+resume or manual entry
+        ↓
+editable profile draft
+        ↓
+confirmed roles + work eligibility + preferences
+        ↓
+public job sources → strict filters → explainable score → application tracking
+```
+
+Only jobs passing the confirmed target-role and work-eligibility/location filters are shown. The remaining roles use a transparent score:
+
+| Factor | Weight |
+| --- | ---: |
+| Skills and keywords | 55% |
+| Target-role relevance | 25% |
+| Seniority fit | 10% |
+| Optional preference fit | 10% |
+
+Results are grouped as **Excellent** (85%+), **Strong** (70–84%), and **Potential**. A score is a relevance heuristic, not a promise of employer ATS compatibility or an interview outcome.
+
+## Job sources
+
+- [Remotive](https://remotive.com/)'s public API
+- [Remote OK](https://remoteok.com/)'s public API
+- Optional [Brave Search](https://brave.com/search/api/) discovery for public Lever, Greenhouse, and Ashby job pages
+
+Job Radar does not scrape authenticated LinkedIn pages or submit applications on anyone's behalf.
+
+## Configuration
+
+Pass optional configuration as environment variables when starting the app. For example:
+
+```bash
+BRAVE_SEARCH_API_KEY=your-key PORT=3001 npm start
+```
+
+`.env.example` lists the available settings; the application does not load `.env` files automatically.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `PORT` | No | HTTP port; defaults to `3000` |
+| `HOST` | No | Bind address; defaults to `0.0.0.0` |
+| `BRAVE_SEARCH_API_KEY` | No | Enables public web/ATS discovery through Brave Search |
+
+The UI creates and maintains the active profile. [`profile.example.json`](profile.example.json) documents the stored profile shape for people who prefer to seed one manually.
+
+## Local API
+
+The browser UI uses a small local JSON API. It has no authentication because it is designed to run on a person's own machine; do not expose it directly to the public internet.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` / `PUT` | `/api/profile` | Read or update a confirmed profile |
+| `POST` | `/api/profile/resume` | Parse a resume into an unpersisted editable draft |
+| `POST` | `/api/onboarding/complete` | Save a confirmed profile and start a scan |
+| `GET` | `/api/jobs` | List eligible jobs ranked by current profile |
+| `GET` | `/api/jobs/:id/match` | Explain one job's match score and evidence |
+| `POST` | `/api/scan` | Refresh configured public sources |
+| `GET` | `/api/stats` | Return application-pipeline counts |
+| `GET` / `POST` | `/api/applications` | Read or update the local application pipeline |
 
 ## Architecture
-- `server.js` — HTTP/API composition root
-- `resume-parser.js` — local resume text extraction and deterministic profile inference
-- `profile-store.js` — candidate profile persistence
-- `scanner.js` — source adapters, candidate-driven discovery, normalization and eligibility
-- `matcher.js` — transparent ATS scoring
-- `db.js` — SQLite persistence/migrations
-- `public/` — dependency-light responsive UI
 
-The parser and matcher remain separate: parsing produces an editable draft, profile validation stores only confirmed information, and matching consumes that profile. This keeps the core local and deterministic.
+Job Radar keeps the core modules deliberately separate:
 
-## ATS philosophy
-The score is an explainable relevance heuristic, not a claim to reproduce any employer's proprietary ATS or a literal "perfect match." Exact evidence in the confirmed profile is favored. Missing terms are shown as gaps to verify, never as instructions to fabricate experience.
+- `resume-parser.js` extracts local PDF/DOCX text and proposes an editable profile with normalized skill names.
+- `profile-store.js` normalizes and validates the confirmed profile before it affects a scan.
+- `matcher.js` enforces strict eligibility, calculates the weighted score, and returns evidence and gaps.
+- `scanner.js` normalizes public-source results and saves only eligible roles.
+- `db.js` stores jobs, scans, and application stages in local SQLite.
+- `server.js` composes the HTTP API and serves the dependency-light UI in `public/`.
+
+This separation makes the parser and matching rules independently testable and leaves room for additional source adapters without coupling the core to a cloud AI provider.
+
+## Development
+
+```bash
+npm test
+npm run scan
+```
+
+The test suite covers resume parsing and failure handling, profile validation, strict filter and score behavior, and the confirmed-onboarding API path.
 
 ## Privacy
-Never commit resumes, cover letters, API keys, local profile data, uploads or application history. They are excluded by `.gitignore`.
 
-## Open source
-MIT licensed. Contributions are welcome; keep changes small, privacy-aware, dependency-light and testable.
+- Resume parsing happens locally; no third-party AI or document processor is used.
+- The original resume is discarded after extraction unless the person explicitly opts in to retain a local copy.
+- Local profile data, uploaded documents, SQLite data, environment files, and personal root-level `profile.json` files are excluded from Git.
+- Do not run the local server on a public network without adding appropriate access controls.
+
+## Contributing
+
+Contributions are welcome—especially improvements that preserve the project's local-first and explainable matching principles.
+
+1. Open or comment on a [GitHub issue](https://github.com/Viniciuscarvalho/job-radar/issues) before a large change.
+2. Fork the repository and create a focused branch.
+3. Add or update behavior-focused tests with the change.
+4. Run `npm test` and explain the result in the pull request.
+5. Keep resumes, API keys, application history, and generated local data out of commits.
+
+Useful contribution areas include additional public job-source adapters, richer transparent alias dictionaries, source-health reporting, better salary normalization, and accessibility improvements.
+
+## License
+
+MIT © [Vinicius Carvalho](https://github.com/Viniciuscarvalho)
