@@ -61,7 +61,7 @@ function buildServer({ scanRunner = scan, parseResumeFn = parseResume } = {}) {
       const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1); const filePath = path.join(PUBLIC, file);
       if (filePath.startsWith(PUBLIC) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) { const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript' }; return send(res, 200, fs.readFileSync(filePath), types[path.extname(filePath)] || 'application/octet-stream'); }
       send(res, 404, { error: 'Not found' });
-    } catch (error) { console.error(error); send(res, error.status || 500, { error: error.message }); }
+    } catch (error) { if (!error.status || error.status >= 500) console.error(error); send(res, error.status || 500, { error: error.message }); }
   });
 }
 if (require.main === module) { buildServer().listen(PORT, HOST, () => { console.log(`Job Radar running at http://localhost:${PORT}`); for (const network of Object.values(os.networkInterfaces()).flat()) if (network && network.family === 'IPv4' && !network.internal) console.log(`Mobile/LAN: http://${network.address}:${PORT}`); }); }
