@@ -1,10 +1,14 @@
 {
   "name": "Your Name",
   "location": "Brazil",
-  "regions": ["Brazil", "LATAM", "Latin America", "Worldwide", "Remote"],
+  "workEligibility": ["Brazil", "LATAM", "Worldwide"],
   "roles": ["Senior Software Engineer"],
   "skills": [],
   "keywords": [],
   "excludeCompanies": [],
-  "minSalaryUsdAnnual": 0
+  "minSalaryUsdAnnual": 0,
+  "jobTypes": [],
+  "seniority": "",
+  "workMode": "Remote",
+  "keepResume": false
 }
