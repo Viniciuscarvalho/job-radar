@@ -73,7 +73,7 @@ Only jobs passing the confirmed target-role and work-eligibility/location filter
 | Seniority fit | 10% |
 | Optional preference fit | 10% |
 
-Results are grouped as **Excellent** (85%+), **Strong** (70–84%), and **Potential**. A score is a relevance heuristic, not a promise of employer ATS compatibility or an interview outcome.
+Results are grouped as **Excellent** (85%+), **Strong** (70–84%), and **Potential**. Search eligible roles by text or filter by tier; when a filter has no matches, clear it to return to the full eligible list. A score is a relevance heuristic, not a promise of employer ATS compatibility or an interview outcome.
 
 ## Job sources
 
@@ -82,6 +82,8 @@ Results are grouped as **Excellent** (85%+), **Strong** (70–84%), and **Potent
 - Optional [Brave Search](https://brave.com/search/api/) discovery for public Lever, Greenhouse, and Ashby job pages
 
 Job Radar does not scrape authenticated LinkedIn pages or submit applications on anyone's behalf.
+
+When every configured public source is unreachable, the app reports that separately from a successful scan that finds no eligible roles. Existing saved jobs remain available.
 
 ## Configuration
 
@@ -136,7 +138,7 @@ npm test
 npm run scan
 ```
 
-The test suite covers resume parsing and failure handling, profile validation, strict filter and score behavior, and the confirmed-onboarding API path.
+The test suite covers resume parsing and failure handling, profile validation, strict filter and score behavior, confirmed onboarding, and job-result filtering, empty states, and source-feedback behavior.
 
 ## Privacy
 
