@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const { buildServer } = require('../server');
+const db = require('../db');
 test('onboarding validates a confirmed profile and runs matching only after confirmation', async () => {
   fs.rmSync(process.env.JOB_RADAR_PROFILE_PATH, { force: true });
   fs.rmSync(process.env.JOB_RADAR_UPLOADS_PATH, { force: true, recursive: true });
@@ -16,5 +17,32 @@ test('onboarding validates a confirmed profile and runs matching only after conf
   assert.equal(invalid.status, 422);
   const valid = await fetch(`${base}/api/onboarding/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile: { roles: ['Backend Engineer'], workEligibility: ['Brazil'], keepResume: false } }) });
   assert.equal(valid.status, 200); assert.equal((await valid.json()).scan.found, 0); assert.equal(fs.existsSync(process.env.JOB_RADAR_UPLOADS_PATH), false);
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('career intelligence APIs keep AI local, require confirmation, and preserve application history on PDF export', async () => {
+  fs.rmSync(process.env.JOB_RADAR_PROFILE_PATH, { force: true });
+  fs.rmSync(process.env.JOB_RADAR_RECRUITER_PROFILE_PATH || '/tmp/job-radar-test-recruiter-profile.json', { force: true });
+  const gateway = { status: async () => ({ available: true, model: 'test-local', endpoint: 'http://127.0.0.1:11434' }), generate: async () => ({ text: 'Backend engineer focused on truthful local-first job search support.' }) };
+  const server = buildServer({ scanRunner: async () => ({ found: 0, sources: {} }), localAiGateway: gateway });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const request = (path, options = {}) => fetch(`${base}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
+  const profile = { name: 'Ada', roles: ['Senior Backend Engineer'], workEligibility: ['Brazil'], skills: ['Node.js', 'TypeScript', 'AWS'], seniority: 'Senior' };
+  assert.equal((await request('/api/profile', { method: 'PUT', body: JSON.stringify(profile) })).status, 200);
+  const jobId = Number(db.prepare('INSERT INTO jobs(company,title,location,region,source,posted,salary,url,description,open) VALUES(?,?,?,?,?,?,?,?,?,1)').run('Acme', 'Senior Backend Engineer', 'Brazil / Remote', 'Latin America', 'Test', '2026-09-01', 'Not disclosed', `https://example.test/career-${Date.now()}`, 'Build Node.js TypeScript AWS Docker services.').lastInsertRowid);
+  const status = await request('/api/ai/status'); assert.equal((await status.json()).available, true);
+  const plan = await request('/api/search-intelligence'); assert.equal((await plan.json()).strictEligibility.roles[0], 'Senior Backend Engineer');
+  const suggested = await request('/api/career-profile/suggest', { method: 'POST', body: '{}' }); assert.equal((await suggested.json()).requiresConfirmation, true);
+  const unconfirmed = await request('/api/career-profile', { method: 'PUT', body: JSON.stringify({ englishLevel: 'B2' }) }); assert.equal(unconfirmed.status, 422);
+  const saved = await request('/api/career-profile', { method: 'PUT', body: JSON.stringify({ techStack: ['Node.js', 'TypeScript'], englishLevel: 'B2', seniority: 'Senior', goals: 'Build reliable systems', bio: 'Truthful profile', confirmed: true }) }); assert.equal(saved.status, 200);
+  const careerPdf = await request('/api/career-profile/export', { method: 'POST', body: '{}' }); assert.equal(careerPdf.status, 201);
+  const careerDocument = await careerPdf.json(); assert.equal((await request(careerDocument.document.downloadUrl)).headers.get('content-type'), 'application/pdf');
+  const drafted = await request(`/api/jobs/${jobId}/cover-letter`, { method: 'POST', body: '{}' }); assert.equal(drafted.status, 201); const draft = (await drafted.json()).draft;
+  const notApproved = await request(`/api/jobs/${jobId}/cover-letter/export`, { method: 'POST', body: JSON.stringify({ draftId: draft.id }) }); assert.equal(notApproved.status, 422);
+  assert.equal((await request('/api/applications', { method: 'POST', body: JSON.stringify({ job_id: jobId, stage: 'interview', notes: 'Existing history' }) })).status, 200);
+  const exported = await request(`/api/jobs/${jobId}/cover-letter/export`, { method: 'POST', body: JSON.stringify({ draftId: draft.id, approved: true }) }); assert.equal(exported.status, 201); const exportedJson = await exported.json(); assert.equal((await request(exportedJson.document.downloadUrl)).status, 200);
+  const applications = await request('/api/applications'); const application = (await applications.json()).find(item => item.job_id === jobId); assert.equal(application.stage, 'interview'); assert.ok(application.cover_letter_path);
+  const interview = await request(`/api/jobs/${jobId}/interview-plan`, { method: 'POST', body: '{}' }); const interviewPlan = await interview.json(); assert.equal(interviewPlan.selectedJob.id, jobId); assert.ok(interviewPlan.questionBank.length);
   await new Promise(resolve => server.close(resolve));
 });

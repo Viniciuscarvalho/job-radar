@@ -25,7 +25,7 @@ It is not an employer ATS, an account-based SaaS product, an OCR tool for scanne
 
 ## Quick start
 
-Requirements: Node.js 22+ and an internet connection when scanning public job sources.
+Requirements: Node.js 22+ and an internet connection when scanning public job sources. Career suggestions additionally need an Ollama-compatible runtime running on this computer; manual profile editing, deterministic cover-letter drafts, and written study guidance remain available without it.
 
 ```bash
 git clone https://github.com/Viniciuscarvalho/job-radar.git
@@ -35,6 +35,12 @@ npm start
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+To enable optional local AI suggestions, install a compatible [Ollama runtime](https://docs.ollama.com/quickstart) and download the default model on the same computer:
+
+```bash
+ollama pull llama3.2
+```
 
 If port 3000 is already in use, choose another port:
 
@@ -51,6 +57,12 @@ PORT=3001 npm start
 5. Open **Why this match** to inspect the evidence, then open the original source to apply and track the stage locally.
 
 Scanned or image-only PDFs are not OCR'd. Use a text-based PDF/DOCX or enter the profile manually instead.
+
+## Career Intelligence
+
+After confirming a profile, use the local Career Intelligence workspace to review a recruiter profile (tech stack, CEFR English level, seniority, goals, and bio), inspect transparent search terms, and export a local recruiter-profile PDF. A public profile URL is not created.
+
+Open an eligible job's details to create an editable, evidence-bound cover-letter draft and explicitly approve it before exporting a local PDF. The same details panel offers a written study plan and question bank. Job Radar never auto-applies or sends profile data to a cloud AI provider.
 
 ## How it works
 
@@ -100,6 +112,8 @@ BRAVE_SEARCH_API_KEY=your-key PORT=3001 npm start
 | `PORT` | No | HTTP port; defaults to `3000` |
 | `HOST` | No | Bind address; defaults to `0.0.0.0` |
 | `BRAVE_SEARCH_API_KEY` | No | Enables public web/ATS discovery through Brave Search |
+| `JOB_RADAR_LOCAL_AI_URL` | No | Loopback URL for an Ollama-compatible local runtime; defaults to `http://127.0.0.1:11434` and remote URLs are rejected |
+| `JOB_RADAR_LOCAL_AI_MODEL` | No | Local model name used for optional profile and cover-letter suggestions; defaults to `llama3.2` |
 
 The UI creates and maintains the active profile. [`profile.example.json`](profile.example.json) documents the stored profile shape for people who prefer to seed one manually.
 
@@ -115,6 +129,16 @@ The browser UI uses a small local JSON API. It has no authentication because it 
 | `GET` | `/api/jobs` | List eligible jobs ranked by current profile |
 | `GET` | `/api/jobs/:id/match` | Explain one job's match score and evidence |
 | `POST` | `/api/scan` | Refresh configured public sources |
+| `GET` | `/api/ai/status` | Report whether the configured local AI runtime and model are available |
+| `GET` | `/api/search-intelligence` | Show resume-derived search terms and the unchanged strict eligibility boundary |
+| `GET` / `PUT` | `/api/career-profile` | Read or save a confirmed local recruiter profile |
+| `POST` | `/api/career-profile/suggest` | Create an editable local-AI bio suggestion without saving it |
+| `POST` | `/api/career-profile/export` | Export the confirmed recruiter profile as a local PDF |
+| `POST` | `/api/jobs/:id/cover-letter` | Create an evidence-bound draft only for a selected eligible job |
+| `GET` / `PUT` | `/api/cover-letters/:id` | Read or save an edited, unapproved cover-letter draft |
+| `POST` | `/api/jobs/:id/cover-letter/export` | Export an explicitly approved draft as a local PDF attachment |
+| `POST` | `/api/jobs/:id/interview-plan` | Create written study guidance and practice questions for an eligible job |
+| `GET` | `/api/documents/:id` | Download one locally generated PDF |
 | `GET` | `/api/stats` | Return application-pipeline counts |
 | `GET` / `POST` | `/api/applications` | Read or update the local application pipeline |
 
@@ -126,6 +150,7 @@ Job Radar keeps the core modules deliberately separate:
 - `profile-store.js` normalizes and validates the confirmed profile before it affects a scan.
 - `matcher.js` enforces strict eligibility, calculates the weighted score, and returns evidence and gaps.
 - `scanner.js` normalizes public-source results and saves only eligible roles.
+- `local-ai.js`, `search-intelligence.js`, `cover-letter.js`, `recruiter-profile.js`, and `interview-planner.js` keep local AI boundaries, transparent search planning, evidence-bound writing, profile validation, and study guidance independently testable.
 - `db.js` stores jobs, scans, and application stages in local SQLite.
 - `server.js` composes the HTTP API and serves the dependency-light UI in `public/`.
 
@@ -138,13 +163,13 @@ npm test
 npm run scan
 ```
 
-The test suite covers resume parsing and failure handling, profile validation, strict filter and score behavior, confirmed onboarding, and job-result filtering, empty states, and source-feedback behavior.
+The test suite covers resume parsing and failure handling, profile validation, strict filter and score behavior, confirmed onboarding, job-result feedback, local-AI privacy and failure behavior, CEFR validation, evidence-bound letters, local PDFs, and API-level application-history preservation.
 
 ## Privacy
 
 - Resume parsing happens locally; no third-party AI or document processor is used.
 - The original resume is discarded after extraction unless the person explicitly opts in to retain a local copy.
-- Local profile data, uploaded documents, SQLite data, environment files, and personal root-level `profile.json` files are excluded from Git.
+- Local candidate and recruiter-profile data, uploaded documents, SQLite data, environment files, and personal root-level `profile.json` files are excluded from Git.
 - Do not run the local server on a public network without adding appropriate access controls.
 
 ## Contributing
