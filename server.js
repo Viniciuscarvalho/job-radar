@@ -7,6 +7,13 @@ const { atsAdvice, evaluateJob } = require('./matcher');
 const { scan } = require('./scanner');
 const { getProfile, saveProfile } = require('./profile-store');
 const { parseResume } = require('./resume-parser');
+const { LocalAiGateway } = require('./local-ai');
+const { createSearchPlan } = require('./search-intelligence');
+const { getRecruiterProfile, saveRecruiterProfile } = require('./recruiter-profile-store');
+const { composeCoverLetter, validateEditableContent } = require('./cover-letter');
+const { approveDraft, createDraft, getDraft, updateDraft } = require('./cover-letter-store');
+const { getDocument, storePdf } = require('./document-store');
+const { createInterviewPlan } = require('./interview-planner');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -37,7 +44,15 @@ function jobs() {
     .filter(job => job.match.eligible)
     .sort((left, right) => right.match.score - left.match.score || String(right.posted).localeCompare(String(left.posted)));
 }
-function buildServer({ scanRunner = scan, parseResumeFn = parseResume } = {}) {
+function selectedEligibleJob(id) {
+  const job = db.prepare('SELECT * FROM jobs WHERE id=? AND open=1').get(id);
+  if (!job) { const error = new Error('Job not found.'); error.status = 404; throw error; }
+  if (!evaluateJob(job).eligible) { const error = new Error('Choose an eligible job before using career assistance.'); error.status = 403; throw error; }
+  return job;
+}
+function buildServer({ scanRunner = scan, parseResumeFn = parseResume, localAiGateway } = {}) {
+  let gateway = localAiGateway;
+  const ai = () => gateway || (gateway = new LocalAiGateway());
   refreshScores();
   return http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -52,8 +67,42 @@ function buildServer({ scanRunner = scan, parseResumeFn = parseResume } = {}) {
       }
       if (url.pathname === '/api/profile' && req.method === 'PUT') { const profile = saveProfile(await body(req)); refreshScores(); return send(res, 200, { profile }); }
       if (url.pathname === '/api/onboarding/complete' && req.method === 'POST') { const input = await body(req); const profile = saveProfile(input.profile); persistOriginalResume(input, profile); refreshScores(); return send(res, 200, { profile, scan: await scanRunner() }); }
+      if (url.pathname === '/api/ai/status' && req.method === 'GET') { try { return send(res, 200, await ai().status()); } catch (error) { return send(res, 200, { available: false, error: error.message, message: error.message, code: error.code || 'LOCAL_AI_UNAVAILABLE' }); } }
+      if (url.pathname === '/api/search-intelligence' && req.method === 'GET') return send(res, 200, createSearchPlan(getProfile()));
+      if (url.pathname === '/api/career-profile' && req.method === 'GET') return send(res, 200, getRecruiterProfile(getProfile()));
+      if (url.pathname === '/api/career-profile' && req.method === 'PUT') return send(res, 200, { profile: saveRecruiterProfile(await body(req), getProfile()) });
+      if (url.pathname === '/api/career-profile/suggest' && req.method === 'POST') {
+        const profile = getProfile(); const recruiterProfile = getRecruiterProfile(profile);
+        const result = await ai().generate({ system: 'Write concise, factual recruiter-profile bios. Use only the supplied facts. Do not invent employers, years, credentials, metrics, or skills.', prompt: JSON.stringify({ name: profile.name, roles: profile.roles, skills: recruiterProfile.techStack, seniority: recruiterProfile.seniority, goals: recruiterProfile.goals }) });
+        return send(res, 200, { suggestion: { bio: result.text }, editable: true, requiresConfirmation: true, localOnly: true });
+      }
+      if (url.pathname === '/api/career-profile/export' && req.method === 'POST') {
+        const recruiterProfile = getRecruiterProfile(getProfile());
+        if (!recruiterProfile.confirmedAt) return send(res, 422, { error: 'Review and confirm the recruiter profile before exporting it.' });
+        const document = storePdf({ kind: 'recruiter-profile', name: 'job-radar-recruiter-profile.pdf', title: 'Job Radar recruiter profile', lines: [`Tech stack: ${recruiterProfile.techStack.join(', ') || 'Not specified'}`, `English: ${recruiterProfile.englishLevel || 'Not specified'}`, `Seniority: ${recruiterProfile.seniority || 'Not specified'}`, `Goals: ${recruiterProfile.goals || 'Not specified'}`, '', recruiterProfile.bio || 'No bio provided.'] });
+        return send(res, 201, { document: { id: document.id, name: document.name, downloadUrl: `/api/documents/${document.id}` } });
+      }
       if (url.pathname === '/api/jobs' && req.method === 'GET') return send(res, 200, jobs());
       if (/^\/api\/jobs\/\d+\/match$/.test(url.pathname) && req.method === 'GET') { const id = Number(url.pathname.split('/')[3]); const job = db.prepare('SELECT * FROM jobs WHERE id=?').get(id); return job ? send(res, 200, atsAdvice(job)) : send(res, 404, { error: 'Not found' }); }
+      if (/^\/api\/jobs\/\d+\/cover-letter$/.test(url.pathname) && req.method === 'POST') {
+        const job = selectedEligibleJob(Number(url.pathname.split('/')[3])); const profile = getProfile(); const input = await body(req); const generated = composeCoverLetter(profile, job);
+        let content = generated.content;
+        if (input.useAi) {
+          const suggestion = await ai().generate({ system: 'Draft a truthful cover letter using only supplied evidence. Do not claim years, credentials, education, employers, metrics, or skills outside the evidence.', prompt: JSON.stringify({ job: { title: job.title, company: job.company, description: job.description }, evidence: generated.evidence }) });
+          content = validateEditableContent(suggestion.text, generated.evidence);
+        }
+        return send(res, 201, { draft: createDraft({ jobId: job.id, content, evidence: generated.evidence }), editable: true, requiresApprovalBeforeExport: true, localOnly: true });
+      }
+      if (/^\/api\/cover-letters\/\d+$/.test(url.pathname) && req.method === 'GET') { const draft = getDraft(Number(url.pathname.split('/')[3])); return draft ? send(res, 200, draft) : send(res, 404, { error: 'Cover letter draft not found.' }); }
+      if (/^\/api\/cover-letters\/\d+$/.test(url.pathname) && req.method === 'PUT') { const draft = updateDraft(Number(url.pathname.split('/')[3]), (await body(req)).content); return draft ? send(res, 200, { draft }) : send(res, 404, { error: 'Cover letter draft not found.' }); }
+      if (/^\/api\/jobs\/\d+\/cover-letter\/export$/.test(url.pathname) && req.method === 'POST') {
+        const job = selectedEligibleJob(Number(url.pathname.split('/')[3])); const input = await body(req); const draft = getDraft(Number(input.draftId)); if (!draft || draft.job_id !== job.id) return send(res, 404, { error: 'Cover letter draft not found for this job.' });
+        if (input.approved !== true) return send(res, 422, { error: 'Review and approve the cover letter before exporting it.' });
+        const approved = approveDraft(draft.id); const document = storePdf({ kind: 'cover-letter', name: `cover-letter-${job.company || job.id}.pdf`, title: `Cover letter — ${job.title}`, lines: approved.content.split('\n'), jobId: job.id });
+        return send(res, 201, { draft: approved, document: { id: document.id, name: document.name, downloadUrl: `/api/documents/${document.id}` } });
+      }
+      if (/^\/api\/jobs\/\d+\/interview-plan$/.test(url.pathname) && req.method === 'POST') { const job = selectedEligibleJob(Number(url.pathname.split('/')[3])); const profile = getProfile(); return send(res, 200, createInterviewPlan({ profile: { ...profile, englishLevel: getRecruiterProfile(profile).englishLevel }, job })); }
+      if (/^\/api\/documents\/\d+$/.test(url.pathname) && req.method === 'GET') { const document = getDocument(Number(url.pathname.split('/')[3])); if (!document) return send(res, 404, { error: 'Local document not found.' }); res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${safe(document.name)}"` }); return res.end(fs.readFileSync(document.path)); }
       if (url.pathname === '/api/scan' && req.method === 'POST') return send(res, 200, await scanRunner());
       if (url.pathname === '/api/stats' && req.method === 'GET') return send(res, 200, stats());
       if (url.pathname === '/api/applications' && req.method === 'GET') { const rows = db.prepare('SELECT a.*,j.company,j.title,j.url,j.match_score,j.location,j.region,j.description FROM applications a JOIN jobs j ON j.id=a.job_id ORDER BY a.updated_at DESC').all(); return send(res, 200, rows.map(row => ({ ...row, stillEligible: evaluateJob(row).eligible }))); }

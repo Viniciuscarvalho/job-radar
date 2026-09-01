@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Job Radar</title><link rel="stylesheet" href="styles.css"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Job Radar</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="career-intelligence.css"></head>
 <body><header><div><div class="eyebrow">LOCAL CAREER OS</div><h1>Job Radar</h1><p>Private, explainable job matching from your confirmed profile.</p></div><button id="scanBtn" class="secondary">Refresh jobs</button></header>
 <main>
   <section class="panel onboarding"><div class="stepper" aria-label="Onboarding steps"><span class="active" id="step1">1 Upload</span><span id="step2">2 Review</span><span id="step3">3 Preferences</span></div>
@@ -7,8 +7,35 @@
     <div id="profileStep" class="hidden"><h2>Review your profile</h2><p>Confirm and correct these fields. Job Radar uses only what you approve.</p><div class="profile-grid"><label>Name<input id="pName" autocomplete="name"></label><label>Target roles <em>required</em><input id="pRoles" placeholder="e.g. Senior Backend Engineer, Staff Engineer"></label><label>Work eligibility / locations <em>required</em><input id="pEligibility" placeholder="e.g. Brazil, LATAM, Worldwide"></label><label>Skills and keywords<input id="pSkills" placeholder="e.g. TypeScript, Node.js, AWS"></label></div><div class="actions"><button id="toPreferences">Continue</button><button id="backToUpload" class="secondary">Back</button></div></div>
     <div id="preferencesStep" class="hidden"><h2>Fine-tune the search</h2><p>These are optional preferences. Required roles and eligibility always remain strict.</p><div class="profile-grid"><label>Minimum annual salary (USD)<input id="pMinSalary" type="number" min="0"></label><label>Job types<input id="pJobTypes" placeholder="Full-time, Contract"></label><label>Preferred seniority<input id="pSeniority" placeholder="Senior, Staff"></label><label>Work mode<input id="pWorkMode" placeholder="Remote, Hybrid"></label><label>Excluded companies<input id="pExcludedCompanies" placeholder="Comma separated"></label></div><label class="checkbox"><input id="keepResume" type="checkbox"> Keep my original resume locally for future application attachments</label><p class="notice">By default, your original resume is discarded once this profile is confirmed.</p><div class="actions"><button id="findMatches">Find my matches</button><button id="backToProfile" class="secondary">Back</button></div></div>
   </section>
+  <section class="panel career-workspace" aria-labelledby="careerWorkspaceTitle">
+    <div class="section-heading"><div><div class="eyebrow">LOCAL CAREER INTELLIGENCE</div><h2 id="careerWorkspaceTitle">Build your recruiter profile</h2></div><span class="privacy-badge">Private by default</span></div>
+    <p>Refine the profile you choose to share with recruiters. Local AI can suggest wording, but every field stays editable and requires your confirmation. Job Radar does not create a public profile URL.</p>
+    <p class="notice service-status" id="aiStatus" role="status" aria-live="polite">Checking local AI availability…</p>
+    <div class="career-grid">
+      <div>
+        <h3>Your editable recruiter profile</h3>
+        <div class="profile-grid career-profile-grid">
+          <label>Tech stack<input id="careerTechStack" placeholder="e.g. TypeScript, Node.js, AWS"></label>
+          <label>English proficiency <span class="required">optional</span><select id="careerEnglish"></select></label>
+          <label>Seniority<select id="careerSeniority"></select></label>
+          <label class="full-width">Career goals<textarea id="careerGoals" rows="3" placeholder="e.g. Build reliable developer platforms in a remote senior role"></textarea></label>
+          <label class="full-width">Recruiter bio<textarea id="careerBio" rows="5" placeholder="Write a concise, truthful introduction. You control what it says."></textarea></label>
+        </div>
+        <div class="actions"><button type="button" id="generateProfileSuggestions">Suggest improvements</button><button type="button" id="saveCareerProfile" class="secondary">Save confirmed profile</button><button type="button" id="exportCareerProfile" class="secondary" disabled>Export profile PDF</button></div>
+        <p class="notice" id="careerProfileConfirmation">Review these fields before saving. Nothing here is public or shared.</p>
+        <p class="notice" id="careerProfileStatus" role="status" aria-live="polite"></p>
+        <div id="careerSuggestions"></div>
+      </div>
+      <aside class="search-intelligence" aria-labelledby="searchIntelligenceTitle">
+        <div class="eyebrow">TRANSPARENT SEARCH</div><h3 id="searchIntelligenceTitle">Search intelligence</h3>
+        <p>These local terms help discover relevant roles. They never override your confirmed target roles or work eligibility.</p>
+        <ul id="searchIntelligenceTerms" class="term-list"><li>Terms will appear after your confirmed profile is available.</li></ul>
+        <p class="notice" id="searchIntelligenceStatus" role="status" aria-live="polite"></p>
+      </aside>
+    </div>
+  </section>
   <section class="stats" id="stats"></section>
   <section class="toolbar"><div><h2>Eligible jobs</h2><p id="resultsMessage" role="status" aria-live="polite">Complete your profile to find jobs that fit.</p></div><div class="filters"><input id="search" type="search" placeholder="Search eligible jobs" aria-label="Search eligible jobs"><select id="tierFilter" aria-label="Filter by match tier"><option value="All">All match tiers</option><option value="Excellent">Excellent</option><option value="Strong">Strong</option><option value="Potential">Potential</option></select></div></section>
   <section id="jobs" class="jobs"></section>
   <section class="panel"><h2>Application pipeline</h2><div id="pipeline"></div></section>
-</main><div id="drawer" class="drawer hidden"><div class="drawer-card"><button class="close" id="closeDrawer">×</button><div id="drawerContent"></div></div></div><script src="jobs-view.js"></script><script src="app.js"></script></body></html>
+</main><div id="drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-label="Job match details"><div class="drawer-card"><button class="close" id="closeDrawer" aria-label="Close job details">×</button><div id="drawerContent"></div></div></div><script src="jobs-view.js"></script><script src="career-intelligence.js"></script><script src="app.js"></script></body></html>
