@@ -24,6 +24,34 @@ function setResultsMessage(message, tone = 'info') {
   node.dataset.tone = tone;
 }
 
+function setFieldError(id, message) {
+  const field = $('#' + id);
+  const error = $('#' + id + 'Error');
+  field.setAttribute('aria-invalid', 'true');
+  error.textContent = message;
+  error.hidden = false;
+}
+
+function clearFieldError(id) {
+  const field = $('#' + id);
+  const error = $('#' + id + 'Error');
+  field.removeAttribute('aria-invalid');
+  error.textContent = '';
+  error.hidden = true;
+}
+
+function validateRequiredProfile() {
+  const profile = profileFromForm();
+  const missing = [];
+  if (!profile.roles.length) { setFieldError('pRoles', 'Add at least one target role, for example Backend Engineer.'); missing.push('pRoles'); } else clearFieldError('pRoles');
+  if (!profile.workEligibility.length) { setFieldError('pEligibility', 'Add at least one location or work eligibility, for example Brazil or Worldwide.'); missing.push('pEligibility'); } else clearFieldError('pEligibility');
+  const status = $('#profileFormStatus');
+  status.hidden = !missing.length;
+  status.textContent = missing.length ? 'Add the required profile details before continuing.' : '';
+  if (missing.length) $('#' + missing[0]).focus();
+  return missing.length === 0;
+}
+
 function profileFromForm() {
   return { name: $('#pName').value, roles: split($('#pRoles').value), workEligibility: split($('#pEligibility').value), skills: split($('#pSkills').value), keywords: split($('#pSkills').value), minSalaryUsdAnnual: Number($('#pMinSalary').value || 0), jobTypes: split($('#pJobTypes').value), seniority: $('#pSeniority').value, workMode: $('#pWorkMode').value, excludeCompanies: split($('#pExcludedCompanies').value), keepResume: $('#keepResume').checked };
 }
@@ -60,7 +88,7 @@ async function loadStats() {
 
 function currentFilters() { return { query: $('#search').value, tier: $('#tierFilter').value }; }
 function clearFilters() { $('#search').value = ''; $('#tierFilter').value = 'All'; renderJobs(); }
-function emptyJobsHtml(state) { return `<div class="panel empty-state"><h3>${esc(state.title)}</h3><p>${esc(state.detail)}</p>${state.canClearFilters ? '<button id="clearFilters" class="secondary">Clear filters</button>' : ''}</div>`; }
+function emptyJobsHtml(state) { return `<div class="panel empty-state" role="status"><h3>${esc(state.title)}</h3><p>${esc(state.detail)}</p><div class="actions">${state.canClearFilters ? '<button id="clearFilters" class="secondary">Clear filters</button>' : ''}${state.canRefresh ? '<button id="refreshEmptyJobs">Refresh jobs</button>' : ''}</div></div>`; }
 
 function jobCard(job) {
   return `<article class="job"><div class="job-top"><div><div class="company">${esc(job.company)}</div><h3>${esc(job.title)}</h3></div><div class="score ${job.match.tier.toLowerCase()}">${job.match.score}%</div></div><div class="meta"><span class="tier ${job.match.tier.toLowerCase()}">${esc(job.match.tier)}</span><span class="tag">${esc(job.location || 'Remote')}</span><span class="tag">${esc(job.source)}</span></div><div class="desc">${esc(job.description || '')}</div><div class="actions"><button class="secondary" data-job-details="${job.id}">Why this match</button><a class="btn" target="_blank" rel="noopener" href="${esc(safeUrl(job.url))}">Open role ↗</a></div></article>`;
@@ -73,6 +101,7 @@ function renderJobs() {
   if (state) {
     $('#jobs').innerHTML = emptyJobsHtml(state);
     $('#clearFilters')?.addEventListener('click', clearFilters);
+    $('#refreshEmptyJobs')?.addEventListener('click', () => $('#scanBtn').click());
     return;
   }
   $('#jobs').innerHTML = TIERS.map(tier => {
@@ -83,7 +112,8 @@ function renderJobs() {
 }
 
 function showJobsError(error) {
-  $('#jobs').innerHTML = `<div class="panel empty-state"><h3>Jobs could not be loaded</h3><p>${esc(error.message || 'Check that Job Radar is running, then refresh jobs.')}</p></div>`;
+  $('#jobs').innerHTML = `<div class="panel empty-state" role="alert"><h3>Jobs could not be loaded</h3><p>${esc(error.message || 'Check that Job Radar is running, then refresh jobs.')}</p><div class="actions"><button id="retryJobs">Retry loading jobs</button></div></div>`;
+  $('#retryJobs')?.addEventListener('click', loadJobs);
   setResultsMessage('We could not load jobs. Your saved jobs have not been changed.', 'error');
 }
 
@@ -106,9 +136,10 @@ async function loadReviewJobs() {
     status.textContent = jobs.length ? `${jobs.length} ${jobs.length === 1 ? 'job is' : 'jobs are'} waiting for source-backed review.` : 'All saved discoveries have been resolved or excluded.';
     document.querySelectorAll('[data-analyze-job]').forEach(button => { button.onclick = () => analyzeJob(Number(button.dataset.analyzeJob)); });
   } catch (error) {
-    container.innerHTML = '';
+    container.innerHTML = '<button id="retryReviewJobs" class="secondary">Retry loading reviews</button>';
     status.textContent = `Could not load jobs waiting for review: ${error.message}`;
     status.dataset.tone = 'error';
+    $('#retryReviewJobs')?.addEventListener('click', loadReviewJobs);
   }
 }
 
@@ -173,8 +204,10 @@ $('#parseResume').onclick = async () => {
 };
 
 $('#manualProfile').onclick = () => { $('#resumeStatus').textContent = 'Manual profile selected.'; showStep('profile'); };
-$('#toPreferences').onclick = () => { const profile = profileFromForm(); if (!profile.roles.length || !profile.workEligibility.length) { $('#resumeStatus').textContent = 'Target roles and work eligibility/location are required.'; return; } showStep('preferences'); };
+['pRoles', 'pEligibility'].forEach(id => $('#' + id).addEventListener('input', () => clearFieldError(id)));
+$('#toPreferences').onclick = () => { if (!validateRequiredProfile()) return; showStep('preferences'); };
 $('#findMatches').onclick = async () => {
+  if (!validateRequiredProfile()) { showStep('profile'); return; }
   const button = $('#findMatches'); button.disabled = true; button.textContent = 'Finding matches…';
   try {
     const profile = profileFromForm();
