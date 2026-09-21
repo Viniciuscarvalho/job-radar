@@ -19,13 +19,15 @@ test('filters eligible jobs by text and match tier without mutating the original
 test('explains whether no jobs are eligible or the active filters found none', () => {
   assert.deepEqual(emptyState({ totalJobs: 0, filteredJobs: 0, query: '', tier: 'All' }), {
     title: 'No eligible jobs yet',
-    detail: 'No current jobs meet your confirmed target roles and work eligibility.',
+    detail: 'No current jobs meet your confirmed target roles and work eligibility. Refresh jobs to search the available sources again.',
     canClearFilters: false,
+    canRefresh: true,
   });
   assert.deepEqual(emptyState({ totalJobs: 2, filteredJobs: 0, query: 'designer', tier: 'All' }), {
     title: 'No matches for these filters',
     detail: 'Try a different search or clear the active filters to see all eligible jobs.',
     canClearFilters: true,
+    canRefresh: false,
   });
 });
 
@@ -49,6 +51,8 @@ test('serves the accessible filter controls and the jobs-results module', async 
   await new Promise(resolve => server.close(resolve));
 
   assert.match(page, /id="resultsMessage" role="status" aria-live="polite"/);
+  assert.match(page, /id="pRoles" required aria-required="true" aria-describedby="pRolesError"/);
+  assert.match(page, /id="profileFormStatus" class="form-status" role="alert" hidden/);
   assert.match(page, /id="tierFilter" aria-label="Filter by match tier"/);
   assert.match(page, /script src="jobs-view\.js"/);
   assert.match(module, /function scanFeedback/);

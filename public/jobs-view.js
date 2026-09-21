@@ -17,10 +17,10 @@
   function emptyState({ totalJobs, filteredJobs, query = '', tier = 'All' }) {
     if (filteredJobs > 0) return null;
     if (totalJobs === 0) {
-      return { title: 'No eligible jobs yet', detail: 'No current jobs meet your confirmed target roles and work eligibility.', canClearFilters: false };
+      return { title: 'No eligible jobs yet', detail: 'No current jobs meet your confirmed target roles and work eligibility. Refresh jobs to search the available sources again.', canClearFilters: false, canRefresh: true };
     }
     if (String(query).trim() || tier !== 'All') {
-      return { title: 'No matches for these filters', detail: 'Try a different search or clear the active filters to see all eligible jobs.', canClearFilters: true };
+      return { title: 'No matches for these filters', detail: 'Try a different search or clear the active filters to see all eligible jobs.', canClearFilters: true, canRefresh: false };
     }
     return null;
   }
