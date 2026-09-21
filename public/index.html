@@ -37,5 +37,11 @@
   <section class="stats" id="stats"></section>
   <section class="toolbar"><div><h2>Eligible jobs</h2><p id="resultsMessage" role="status" aria-live="polite">Complete your profile to find jobs that fit.</p></div><div class="filters"><input id="search" type="search" placeholder="Search eligible jobs" aria-label="Search eligible jobs"><select id="tierFilter" aria-label="Filter by match tier"><option value="All">All match tiers</option><option value="Excellent">Excellent</option><option value="Strong">Strong</option><option value="Potential">Potential</option></select></div></section>
   <section id="jobs" class="jobs"></section>
+  <section class="panel review-queue" aria-labelledby="reviewQueueTitle">
+    <div class="section-heading"><div><div class="eyebrow">SOURCE REVIEW</div><h2 id="reviewQueueTitle">Jobs waiting for evidence</h2></div><span class="privacy-badge">Local analysis</span></div>
+    <p>These discoveries are not shown as eligible until the source supports both role and location compatibility.</p>
+    <p id="reviewQueueStatus" class="notice" role="status" aria-live="polite">Checking saved discoveries…</p>
+    <div id="reviewJobs" class="job-list"></div>
+  </section>
   <section class="panel"><h2>Application pipeline</h2><div id="pipeline"></div></section>
 </main><div id="drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-label="Job match details"><div class="drawer-card"><button class="close" id="closeDrawer" aria-label="Close job details">×</button><div id="drawerContent"></div></div></div><script src="jobs-view.js"></script><script src="career-intelligence.js"></script><script src="app.js"></script></body></html>

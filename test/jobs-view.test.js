@@ -34,6 +34,10 @@ test('distinguishes unreachable job sources from an empty successful refresh', (
   assert.match(scanFeedback({ found: 0, sources: { Remotive: { found: 0 } } }), /No eligible jobs were found/i);
 });
 
+test('explains when a discovery is retained for source review', () => {
+  assert.match(scanFeedback({ found: 0, pending: 1, sources: { Himalayas: { fetched: 1, pending: 1 } } }), /needs source review/i);
+});
+
 test('serves the accessible filter controls and the jobs-results module', async () => {
   const server = buildServer({ scanRunner: async () => ({ found: 0, sources: {} }) });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

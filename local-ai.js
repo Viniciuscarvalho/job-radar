@@ -33,7 +33,7 @@ class LocalAiGateway {
 
   async status() {
     try {
-      const response = await this.fetchFn(this.endpoint('api/tags'), { headers: { Accept: 'application/json' } });
+      const response = await this.fetchFn(this.endpoint('api/tags'), { redirect: 'error', signal: AbortSignal.timeout(5000), headers: { Accept: 'application/json' } });
       if (!response.ok) { const message = unavailable(`The runtime responded with ${response.status}. Start or check the local runtime, then try again.`).message; return { available: false, model: this.model, error: message, message }; }
       const data = await response.json();
       const models = (data.models || []).map(item => item.name).filter(Boolean);
@@ -45,13 +45,13 @@ class LocalAiGateway {
     }
   }
 
-  async generate({ system = '', prompt, temperature = 0.2 } = {}) {
+  async generate({ system = '', prompt, temperature = 0.2, format } = {}) {
     if (!String(prompt || '').trim()) throw new LocalAiError('LOCAL_AI_PROMPT_REQUIRED', 'Provide a prompt before requesting a local AI suggestion.', 422);
     let response;
     try {
       response = await this.fetchFn(this.endpoint('api/generate'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ model: this.model, system: String(system), prompt: String(prompt), stream: false, options: { temperature } }),
+        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(45000), headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ model: this.model, system: String(system), prompt: String(prompt), stream: false, ...(format ? { format } : {}), options: { temperature } }),
       });
     } catch { throw unavailable(); }
     let data;

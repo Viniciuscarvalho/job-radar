@@ -1,13 +1,15 @@
 # Job Radar
 
-**A private, local-first job radar that turns a confirmed resume profile into explainable job matches.**
+**A private, local-first job radar for finding remote roles every day, prioritizing the ones that fit, and keeping applications organized.**
 
 [![Node.js 22+](https://img.shields.io/badge/node-%3E%3D22-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Privacy: local-first](https://img.shields.io/badge/privacy-local--first-7b2cbf.svg)](#privacy)
 [![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](#contributing)
 
-Job Radar is an open-source career dashboard for people who want to discover remote roles without uploading their resume to an AI service or opaque matching platform. It extracts an editable profile locally, applies the job-search criteria the person confirms, explains every ranking, and keeps application tracking on their own machine.
+Job Radar is an open-source career dashboard for people who want to discover remote roles without uploading their resume to an AI service or opaque matching platform. It extracts an editable profile locally, searches free public job feeds, applies the criteria the person confirms, explains every ranking, and keeps application tracking on their own machine.
+
+Built as a personal project, it makes the trade-offs visible: there is no auto-apply, no LinkedIn scraping, no paid search key, and no claim that a keyword score is an employer decision.
 
 ## Why Job Radar?
 
@@ -16,6 +18,14 @@ Job Radar is an open-source career dashboard for people who want to discover rem
 - **See why a role appears:** every result exposes matched skills, requirements to verify, and a visible score breakdown.
 - **Avoid irrelevant roles:** target roles and work eligibility/location are strict filters, not weak score boosts.
 - **Keep the human in control:** Job Radar opens the original job source for applications and tracks progress locally; it never auto-applies or invents experience.
+- **Start without a paid key:** daily searches use public feeds from Remotive, Remote OK, Himalayas, and Jobicy.
+
+## What this project demonstrates
+
+- A privacy-first local application: resume data, profile, rankings, and application history are stored on the person's machine.
+- Explicit product policy in code: confirmed profile data is required before matching; discoveries with incomplete location evidence stay pending.
+- Small, testable modules for document parsing, source normalization, deterministic matching, structured local judgments, and local persistence.
+- A practical daily workflow: free sources, visible provenance, original application links, and an application pipeline without auto-applying.
 
 ## When to use it
 
@@ -25,7 +35,7 @@ It is not an employer ATS, an account-based SaaS product, an OCR tool for scanne
 
 ## Quick start
 
-Requirements: Node.js 22+ and an internet connection when scanning public job sources. Career suggestions additionally need an Ollama-compatible runtime running on this computer; manual profile editing, deterministic cover-letter drafts, and written study guidance remain available without it.
+Requirements: Node.js 22+ and an internet connection when scanning public job sources. No API key or account is required. Career suggestions and source analysis additionally need an Ollama-compatible runtime running on this computer; manual profile editing, deterministic cover-letter drafts, and written study guidance remain available without it.
 
 ```bash
 git clone https://github.com/Viniciuscarvalho/job-radar.git
@@ -48,13 +58,30 @@ If port 3000 is already in use, choose another port:
 PORT=3001 npm start
 ```
 
+## Daily search
+
+Use **Refresh jobs** in the interface whenever you want fresh results, or run one scan from the terminal:
+
+```bash
+npm run scan
+```
+
+On macOS, the included script can schedule that local scan for 08:00 each day:
+
+```bash
+./scripts/install-macos-launchagent.sh
+```
+
+It only refreshes the local SQLite database and writes scan logs under `data/logs/`; it does not open the browser, submit applications, or send profile data to a third party.
+
 ## First run
 
 1. Upload a text-based PDF or DOCX resume (10 MB maximum), or choose **Enter manually**.
 2. Review the extracted name, target roles, and skills; change or remove anything that is inaccurate.
 3. Confirm at least one target role and one work eligibility/location, then optionally set salary, job type, seniority, work mode, and excluded companies.
-4. Select **Find my matches** to scan public sources and rank eligible roles.
-5. Open **Why this match** to inspect the evidence, then open the original source to apply and track the stage locally.
+4. Select **Find my matches** to search the free public sources and rank eligible roles.
+5. Review any discovery waiting for evidence. A result is only promoted when its source supports role and location compatibility.
+6. Open **Why this match** to inspect the evidence, then open the original source to apply and track the stage locally.
 
 Scanned or image-only PDFs are not OCR'd. Use a text-based PDF/DOCX or enter the profile manually instead.
 
@@ -73,7 +100,7 @@ editable profile draft
         ↓
 confirmed roles + work eligibility + preferences
         ↓
-public job sources → strict filters → explainable score → application tracking
+free public job sources → strict filters → evidence review → explainable score → application tracking
 ```
 
 Only jobs passing the confirmed target-role and work-eligibility/location filters are shown. The remaining roles use a transparent score:
@@ -87,22 +114,25 @@ Only jobs passing the confirmed target-role and work-eligibility/location filter
 
 Results are grouped as **Excellent** (85%+), **Strong** (70–84%), and **Potential**. Search eligible roles by text or filter by tier; when a filter has no matches, clear it to return to the full eligible list. A score is a relevance heuristic, not a promise of employer ATS compatibility or an interview outcome.
 
-## Job sources
+## Free job sources
+
+Every normal scan is available without an API key:
 
 - [Remotive](https://remotive.com/)'s public API
 - [Remote OK](https://remoteok.com/)'s public API
-- Optional [Brave Search](https://brave.com/search/api/) discovery for public Lever, Greenhouse, and Ashby job pages
+- [Himalayas](https://himalayas.app/api)' public API
+- [Jobicy](https://jobicy.com/jobs-rss-feed)'s public API
 
-Job Radar does not scrape authenticated LinkedIn pages or submit applications on anyone's behalf.
+Job Radar preserves each source link and opens that listing when the person chooses to apply. It does not scrape LinkedIn or submit applications on anyone's behalf. LinkedIn searching remains manual: find a role there, open its original employer page when available, then use Job Radar to evaluate and track the application.
 
 When every configured public source is unreachable, the app reports that separately from a successful scan that finds no eligible roles. Existing saved jobs remain available.
 
 ## Configuration
 
-Pass optional configuration as environment variables when starting the app. For example:
+Pass optional configuration as environment variables when starting the app. No variable is required for job discovery. For example:
 
 ```bash
-BRAVE_SEARCH_API_KEY=your-key PORT=3001 npm start
+PORT=3001 npm start
 ```
 
 `.env.example` lists the available settings; the application does not load `.env` files automatically.
@@ -110,8 +140,7 @@ BRAVE_SEARCH_API_KEY=your-key PORT=3001 npm start
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `PORT` | No | HTTP port; defaults to `3000` |
-| `HOST` | No | Bind address; defaults to `0.0.0.0` |
-| `BRAVE_SEARCH_API_KEY` | No | Enables public web/ATS discovery through Brave Search |
+| `HOST` | No | Bind address; defaults to `127.0.0.1` so the local API is not exposed on the network |
 | `JOB_RADAR_LOCAL_AI_URL` | No | Loopback URL for an Ollama-compatible local runtime; defaults to `http://127.0.0.1:11434` and remote URLs are rejected |
 | `JOB_RADAR_LOCAL_AI_MODEL` | No | Local model name used for optional profile and cover-letter suggestions; defaults to `llama3.2` |
 
@@ -127,6 +156,8 @@ The browser UI uses a small local JSON API. It has no authentication because it 
 | `POST` | `/api/profile/resume` | Parse a resume into an unpersisted editable draft |
 | `POST` | `/api/onboarding/complete` | Save a confirmed profile and start a scan |
 | `GET` | `/api/jobs` | List eligible jobs ranked by current profile |
+| `GET` | `/api/jobs/review` | List discoveries awaiting source-backed review |
+| `GET` / `POST` | `/api/jobs/:id/analysis` | Read or create a local, evidence-bound source analysis |
 | `GET` | `/api/jobs/:id/match` | Explain one job's match score and evidence |
 | `POST` | `/api/scan` | Refresh configured public sources |
 | `GET` | `/api/ai/status` | Report whether the configured local AI runtime and model are available |
@@ -136,6 +167,7 @@ The browser UI uses a small local JSON API. It has no authentication because it 
 | `POST` | `/api/career-profile/export` | Export the confirmed recruiter profile as a local PDF |
 | `POST` | `/api/jobs/:id/cover-letter` | Create an evidence-bound draft only for a selected eligible job |
 | `GET` / `PUT` | `/api/cover-letters/:id` | Read or save an edited, unapproved cover-letter draft |
+| `POST` | `/api/cover-letters/:id/claims` | Check draft claims against the stored evidence using local AI |
 | `POST` | `/api/jobs/:id/cover-letter/export` | Export an explicitly approved draft as a local PDF attachment |
 | `POST` | `/api/jobs/:id/interview-plan` | Create written study guidance and practice questions for an eligible job |
 | `GET` | `/api/documents/:id` | Download one locally generated PDF |
@@ -149,7 +181,8 @@ Job Radar keeps the core modules deliberately separate:
 - `resume-parser.js` extracts local PDF/DOCX text and proposes an editable profile with normalized skill names.
 - `profile-store.js` normalizes and validates the confirmed profile before it affects a scan.
 - `matcher.js` enforces strict eligibility, calculates the weighted score, and returns evidence and gaps.
-- `scanner.js` normalizes public-source results and saves only eligible roles.
+- `scanner.js` normalizes four free public sources without API keys. It retains unresolved discoveries for review instead of inventing location evidence.
+- `judgments.js` and `judgment-match.js` keep source interpretation structured, evidence-bound, and separate from the deterministic eligibility policy.
 - `local-ai.js`, `search-intelligence.js`, `cover-letter.js`, `recruiter-profile.js`, and `interview-planner.js` keep local AI boundaries, transparent search planning, evidence-bound writing, profile validation, and study guidance independently testable.
 - `db.js` stores jobs, scans, and application stages in local SQLite.
 - `server.js` composes the HTTP API and serves the dependency-light UI in `public/`.
@@ -163,7 +196,7 @@ npm test
 npm run scan
 ```
 
-The test suite covers resume parsing and failure handling, profile validation, strict filter and score behavior, confirmed onboarding, job-result feedback, local-AI privacy and failure behavior, CEFR validation, evidence-bound letters, local PDFs, and API-level application-history preservation.
+The test suite covers resume parsing and failure handling, profile validation, strict filter and score behavior, free-source normalization, confirmed onboarding, source provenance, local-AI privacy and failure behavior, CEFR validation, evidence-bound letters, local PDFs, and API-level application-history preservation.
 
 ## Privacy
 

@@ -14,9 +14,12 @@ const { composeCoverLetter, validateEditableContent } = require('./cover-letter'
 const { approveDraft, createDraft, getDraft, updateDraft } = require('./cover-letter-store');
 const { getDocument, storePdf } = require('./document-store');
 const { createInterviewPlan } = require('./interview-planner');
+const { analyzeJob, reviewClaims } = require('./judgments');
+const { getAnalysis, saveAnalysis } = require('./judgment-store');
+const { applyJudgment } = require('./judgment-match');
 
 const PORT = Number(process.env.PORT || 3000);
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '127.0.0.1';
 const PUBLIC = path.join(__dirname, 'public');
 const UPLOADS = process.env.JOB_RADAR_UPLOADS_PATH || path.join(__dirname, 'data', 'uploads');
 const MAX_RESUME_BYTES = 10 * 1024 * 1024;
@@ -39,15 +42,27 @@ function persistOriginalResume(input, profile) {
   fs.writeFileSync(path.join(UPLOADS, `master-${Date.now()}-${safe(input.resume.name)}`), raw);
 }
 function jobs() {
+  const profile = getProfile();
   return db.prepare('SELECT * FROM jobs WHERE open=1 ORDER BY posted DESC').all()
-    .map(job => ({ ...job, matched_keywords: JSON.parse(job.matched_keywords || '[]'), missing_keywords: JSON.parse(job.missing_keywords || '[]'), match: evaluateJob(job) }))
+    .map(job => ({ ...job, matched_keywords: JSON.parse(job.matched_keywords || '[]'), missing_keywords: JSON.parse(job.missing_keywords || '[]'), match: applyJudgment(evaluateJob(job, profile), getAnalysis(job, profile), profile) }))
     .filter(job => job.match.eligible)
     .sort((left, right) => right.match.score - left.match.score || String(right.posted).localeCompare(String(left.posted)));
 }
-function selectedEligibleJob(id) {
+function jobsNeedingReview() {
+  const profile = getProfile();
+  return db.prepare('SELECT * FROM jobs WHERE open=1 ORDER BY updated_at DESC').all()
+    .map(job => ({ ...job, match: applyJudgment(evaluateJob(job, profile), getAnalysis(job, profile), profile) }))
+    .filter(job => job.match.needsReview);
+}
+function jobById(id) {
   const job = db.prepare('SELECT * FROM jobs WHERE id=? AND open=1').get(id);
   if (!job) { const error = new Error('Job not found.'); error.status = 404; throw error; }
-  if (!evaluateJob(job).eligible) { const error = new Error('Choose an eligible job before using career assistance.'); error.status = 403; throw error; }
+  return job;
+}
+function selectedEligibleJob(id) {
+  const job = jobById(id);
+  const profile = getProfile();
+  if (!applyJudgment(evaluateJob(job, profile), getAnalysis(job, profile), profile).eligible) { const error = new Error('Choose an eligible job before using career assistance.'); error.status = 403; throw error; }
   return job;
 }
 function buildServer({ scanRunner = scan, parseResumeFn = parseResume, localAiGateway } = {}) {
@@ -83,7 +98,10 @@ function buildServer({ scanRunner = scan, parseResumeFn = parseResume, localAiGa
         return send(res, 201, { document: { id: document.id, name: document.name, downloadUrl: `/api/documents/${document.id}` } });
       }
       if (url.pathname === '/api/jobs' && req.method === 'GET') return send(res, 200, jobs());
-      if (/^\/api\/jobs\/\d+\/match$/.test(url.pathname) && req.method === 'GET') { const id = Number(url.pathname.split('/')[3]); const job = db.prepare('SELECT * FROM jobs WHERE id=?').get(id); return job ? send(res, 200, atsAdvice(job)) : send(res, 404, { error: 'Not found' }); }
+      if (url.pathname === '/api/jobs/review' && req.method === 'GET') return send(res, 200, jobsNeedingReview());
+      if (/^\/api\/jobs\/\d+\/analysis$/.test(url.pathname) && req.method === 'POST') { const job = jobById(Number(url.pathname.split('/')[3])); const analysis = saveAnalysis(await analyzeJob(ai(), job, getProfile())); return send(res, 200, { analysis, match: applyJudgment(evaluateJob(job), analysis, getProfile()) }); }
+      if (/^\/api\/jobs\/\d+\/analysis$/.test(url.pathname) && req.method === 'GET') { const job = jobById(Number(url.pathname.split('/')[3])); const analysis = getAnalysis(job, getProfile()); return analysis ? send(res, 200, { analysis, match: applyJudgment(evaluateJob(job), analysis, getProfile()) }) : send(res, 404, { error: 'No local analysis has been created for this job yet.' }); }
+      if (/^\/api\/jobs\/\d+\/match$/.test(url.pathname) && req.method === 'GET') { const id = Number(url.pathname.split('/')[3]); const job = db.prepare('SELECT * FROM jobs WHERE id=?').get(id); const profile = getProfile(); return job ? send(res, 200, { ...atsAdvice(job, profile), ...applyJudgment(evaluateJob(job, profile), getAnalysis(job, profile), profile) }) : send(res, 404, { error: 'Not found' }); }
       if (/^\/api\/jobs\/\d+\/cover-letter$/.test(url.pathname) && req.method === 'POST') {
         const job = selectedEligibleJob(Number(url.pathname.split('/')[3])); const profile = getProfile(); const input = await body(req); const generated = composeCoverLetter(profile, job);
         let content = generated.content;
@@ -95,13 +113,14 @@ function buildServer({ scanRunner = scan, parseResumeFn = parseResume, localAiGa
       }
       if (/^\/api\/cover-letters\/\d+$/.test(url.pathname) && req.method === 'GET') { const draft = getDraft(Number(url.pathname.split('/')[3])); return draft ? send(res, 200, draft) : send(res, 404, { error: 'Cover letter draft not found.' }); }
       if (/^\/api\/cover-letters\/\d+$/.test(url.pathname) && req.method === 'PUT') { const draft = updateDraft(Number(url.pathname.split('/')[3]), (await body(req)).content); return draft ? send(res, 200, { draft }) : send(res, 404, { error: 'Cover letter draft not found.' }); }
+      if (/^\/api\/cover-letters\/\d+\/claims$/.test(url.pathname) && req.method === 'POST') { const draft = getDraft(Number(url.pathname.split('/')[3])); if (!draft) return send(res, 404, { error: 'Cover letter draft not found.' }); return send(res, 200, await reviewClaims(ai(), draft.content, draft.evidence)); }
       if (/^\/api\/jobs\/\d+\/cover-letter\/export$/.test(url.pathname) && req.method === 'POST') {
         const job = selectedEligibleJob(Number(url.pathname.split('/')[3])); const input = await body(req); const draft = getDraft(Number(input.draftId)); if (!draft || draft.job_id !== job.id) return send(res, 404, { error: 'Cover letter draft not found for this job.' });
         if (input.approved !== true) return send(res, 422, { error: 'Review and approve the cover letter before exporting it.' });
         const approved = approveDraft(draft.id); const document = storePdf({ kind: 'cover-letter', name: `cover-letter-${job.company || job.id}.pdf`, title: `Cover letter — ${job.title}`, lines: approved.content.split('\n'), jobId: job.id });
         return send(res, 201, { draft: approved, document: { id: document.id, name: document.name, downloadUrl: `/api/documents/${document.id}` } });
       }
-      if (/^\/api\/jobs\/\d+\/interview-plan$/.test(url.pathname) && req.method === 'POST') { const job = selectedEligibleJob(Number(url.pathname.split('/')[3])); const profile = getProfile(); return send(res, 200, createInterviewPlan({ profile: { ...profile, englishLevel: getRecruiterProfile(profile).englishLevel }, job })); }
+      if (/^\/api\/jobs\/\d+\/interview-plan$/.test(url.pathname) && req.method === 'POST') { const job = selectedEligibleJob(Number(url.pathname.split('/')[3])); const profile = getProfile(); return send(res, 200, createInterviewPlan({ profile: { ...profile, englishLevel: getRecruiterProfile(profile).englishLevel }, job, analysis: getAnalysis(job, profile) })); }
       if (/^\/api\/documents\/\d+$/.test(url.pathname) && req.method === 'GET') { const document = getDocument(Number(url.pathname.split('/')[3])); if (!document) return send(res, 404, { error: 'Local document not found.' }); res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${safe(document.name)}"` }); return res.end(fs.readFileSync(document.path)); }
       if (url.pathname === '/api/scan' && req.method === 'POST') return send(res, 200, await scanRunner());
       if (url.pathname === '/api/stats' && req.method === 'GET') return send(res, 200, stats());

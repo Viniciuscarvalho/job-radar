@@ -208,7 +208,7 @@
     }
 
     function renderCoverLetter(job) {
-      return `<section class="career-tool" aria-labelledby="coverLetterTitle"><div class="tool-heading"><div><div class="eyebrow">LOCAL APPLICATION WRITER</div><h2 id="coverLetterTitle">Cover letter</h2></div><span class="privacy-badge">Stays on this device</span></div><p>Generate an evidence-bound draft for this specific role. Review and approve it before exporting a PDF.</p><p class="notice" id="coverLetterStatus" role="status" aria-live="polite">Select Generate draft to start. Job Radar will not submit it for you.</p><textarea id="coverLetterDraft" rows="14" aria-label="Editable cover letter draft" placeholder="Your approved, editable cover letter will appear here."></textarea><div class="actions"><button type="button" id="generateCoverLetter">Generate draft</button><button type="button" id="approveCoverLetter" class="secondary" disabled>Approve draft</button><button type="button" id="exportCoverLetter" class="secondary" disabled>Export PDF</button></div><p class="notice">The original application page opens separately; Job Radar never auto-applies.</p></section>`;
+      return `<section class="career-tool" aria-labelledby="coverLetterTitle"><div class="tool-heading"><div><div class="eyebrow">LOCAL APPLICATION WRITER</div><h2 id="coverLetterTitle">Cover letter</h2></div><span class="privacy-badge">Stays on this device</span></div><p>Generate an evidence-bound draft for this specific role. Review and approve it before exporting a PDF.</p><p class="notice" id="coverLetterStatus" role="status" aria-live="polite">Select Generate draft to start. Job Radar will not submit it for you.</p><textarea id="coverLetterDraft" rows="14" aria-label="Editable cover letter draft" placeholder="Your approved, editable cover letter will appear here."></textarea><div class="actions"><button type="button" id="generateCoverLetter">Generate draft</button><button type="button" id="reviewCoverLetter" class="secondary" disabled>Check claims</button><button type="button" id="approveCoverLetter" class="secondary" disabled>Approve draft</button><button type="button" id="exportCoverLetter" class="secondary" disabled>Export PDF</button></div><div id="coverLetterClaims" class="keywords" aria-live="polite"></div><p class="notice">The original application page opens separately; Job Radar never auto-applies.</p></section>`;
     }
 
     function renderInterviewPlan() {
@@ -225,6 +225,7 @@
     function connectJobTools(job) {
       const draft = $('#coverLetterDraft');
       const generate = $('#generateCoverLetter');
+      const review = $('#reviewCoverLetter');
       const approve = $('#approveCoverLetter');
       const exportPdf = $('#exportCoverLetter');
       let approved = false;
@@ -239,6 +240,7 @@
           draft.value = coverLetter.content;
           approved = coverLetter.approved;
           approve.disabled = !draft.value;
+          review.disabled = !draftId;
           exportPdf.disabled = !approved;
           setStatus('#coverLetterStatus', approved ? 'This draft is already approved. You may export it as a PDF.' : 'Draft ready. Edit it, then explicitly approve before PDF export.', 'success');
         } catch (error) {
@@ -247,7 +249,20 @@
           generate.disabled = false;
         }
       };
-      if (draft) draft.oninput = () => { approved = false; approve.disabled = !draft.value.trim(); exportPdf.disabled = true; if (draft.value.trim()) setStatus('#coverLetterStatus', 'Draft changed. Review and approve this version before PDF export.'); };
+      if (draft) draft.oninput = () => { approved = false; approve.disabled = !draft.value.trim(); review.disabled = !draftId; exportPdf.disabled = true; $('#coverLetterClaims').innerHTML = ''; if (draft.value.trim()) setStatus('#coverLetterStatus', 'Draft changed. Review and approve this version before PDF export.'); };
+      if (review) review.onclick = async () => {
+        if (!draftId) return;
+        review.disabled = true;
+        setStatus('#coverLetterStatus', 'Checking factual claims against the draft evidence locally…');
+        try {
+          const saved = await api(`/api/cover-letters/${draftId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: draft.value }) });
+          draftId = saved.draft?.id || draftId;
+          const result = await api(`/api/cover-letters/${draftId}/claims`, { method: 'POST' });
+          $('#coverLetterClaims').innerHTML = (result.claims || []).map(item => `<span class="keyword ${item.status === 'supported' ? 'match' : 'gap'}">${esc(item.status)}: ${esc(item.text)}</span>`).join('');
+          setStatus('#coverLetterStatus', 'Claim check is advisory. Correct any unsupported statement, then approve the version you intend to export.', 'success');
+        } catch (error) { setStatus('#coverLetterStatus', `Claim check could not be completed: ${error.message}`, 'error'); }
+        finally { review.disabled = !draftId; }
+      };
       if (approve) approve.onclick = async () => {
         if (!draft.value.trim()) return;
         approve.disabled = true;
