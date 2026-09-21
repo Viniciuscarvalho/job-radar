@@ -7,8 +7,11 @@ test('strictly excludes a job outside the target role or eligibility', () => {
   assert.equal(evaluateJob({ ...job, title: 'Product Designer' }, profile).eligible, false);
   assert.equal(evaluateJob({ ...job, location: 'United States only', region: 'United States' }, profile).eligible, false);
 });
-test('treats worldwide eligibility as compatible with a generic remote role', () => {
-  assert.equal(evaluateJob({ ...job, location: 'Remote', region: 'Remote' }, { ...profile, workEligibility: ['Worldwide'] }).eligible, true);
+test('keeps a generic remote role pending instead of inventing worldwide eligibility', () => {
+  const result = evaluateJob({ ...job, location: 'Remote', region: 'Remote' }, { ...profile, workEligibility: ['Worldwide'] });
+  assert.equal(result.eligible, false);
+  assert.equal(result.eligibility.status, 'unspecified');
+  assert.equal(result.needsReview, true);
 });
 test('explains transparent weighted excellent matching', () => {
   const result = evaluateJob(job, profile);

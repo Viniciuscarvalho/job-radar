@@ -92,6 +92,44 @@ async function loadJobs() {
   catch (error) { showJobsError(error); return false; }
 }
 
+function reviewCard(job) {
+  const location = job.match?.eligibility?.status === 'unspecified' ? 'Location needs source evidence' : 'Role or location needs review';
+  return `<article class="job"><div class="job-top"><div><div class="company">${esc(job.company)}</div><h3>${esc(job.title)}</h3></div><span class="tag">Pending</span></div><div class="meta"><span class="tag">${esc(location)}</span><span class="tag">${esc(job.source)}</span></div><div class="desc">${esc(job.description || 'The discovery did not include enough source text to evaluate.')}</div><div class="actions"><button class="secondary" data-analyze-job="${job.id}">Analyze source</button><a class="btn" target="_blank" rel="noopener" href="${esc(safeUrl(job.url))}">Open source ↗</a></div></article>`;
+}
+
+async function loadReviewJobs() {
+  const container = $('#reviewJobs');
+  const status = $('#reviewQueueStatus');
+  try {
+    const jobs = await api('/api/jobs/review');
+    container.innerHTML = jobs.length ? jobs.map(reviewCard).join('') : '<p class="notice">No jobs are waiting for evidence review.</p>';
+    status.textContent = jobs.length ? `${jobs.length} ${jobs.length === 1 ? 'job is' : 'jobs are'} waiting for source-backed review.` : 'All saved discoveries have been resolved or excluded.';
+    document.querySelectorAll('[data-analyze-job]').forEach(button => { button.onclick = () => analyzeJob(Number(button.dataset.analyzeJob)); });
+  } catch (error) {
+    container.innerHTML = '';
+    status.textContent = `Could not load jobs waiting for review: ${error.message}`;
+    status.dataset.tone = 'error';
+  }
+}
+
+async function analyzeJob(id) {
+  const button = document.querySelector(`[data-analyze-job="${id}"]`);
+  if (button) { button.disabled = true; button.textContent = 'Analyzing source…'; }
+  $('#reviewQueueStatus').textContent = 'Reading the saved source text locally. Missing evidence stays unresolved.';
+  try {
+    const result = await api(`/api/jobs/${id}/analysis`, { method: 'POST' });
+    await Promise.all([loadJobs(), loadReviewJobs()]);
+    const message = result.match.eligible ? 'Source review found an eligible role.' : result.match.eligibility?.value === 'unspecified' ? 'The source does not establish location compatibility. This job remains pending.' : 'The source does not meet your confirmed criteria.';
+    $('#reviewQueueStatus').textContent = message;
+    $('#reviewQueueStatus').dataset.tone = result.match.eligible ? 'success' : 'warning';
+  } catch (error) {
+    $('#reviewQueueStatus').textContent = `Source analysis could not be completed: ${error.message}`;
+    $('#reviewQueueStatus').dataset.tone = 'error';
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Analyze source'; }
+  }
+}
+
 function stageButtons(jobId) { return ['saved', 'applied', 'interview', 'offer', 'rejected'].map(stage => `<button class="secondary" data-stage="${stage}" data-job-id="${jobId}">${stage}</button>`).join(''); }
 
 async function openJob(id) {
@@ -99,7 +137,9 @@ async function openJob(id) {
     const job = allJobs.find(item => item.id === id);
     if (!job) throw new Error('This job is no longer in the eligible list. Refresh jobs and try again.');
     const match = await api(`/api/jobs/${id}/match`);
-    $('#drawerContent').innerHTML = `<div class="eyebrow">${esc(match.tier)} MATCH</div><h1>${esc(job.title)}</h1><p>${esc(job.company)} · ${esc(job.location)}</p><div class="score ${match.tier.toLowerCase()}">${match.score}%</div><h2>Score breakdown</h2><div class="breakdown"><span>Skills <b>${match.breakdown.skills}/55</b></span><span>Role <b>${match.breakdown.role}/25</b></span><span>Seniority <b>${match.breakdown.seniority}/10</b></span><span>Preferences <b>${match.breakdown.preferences}/10</b></span></div><h2>Matched evidence</h2><div class="keywords">${match.exact.map(skill => `<span class="keyword match">${esc(skill)}</span>`).join('') || '<span class="notice">No extracted skill evidence yet.</span>'}</div><h2>Requirements to verify</h2><div class="keywords">${match.gaps.map(skill => `<span class="keyword gap">${esc(skill)}</span>`).join('') || '<span class="notice">No obvious gaps detected.</span>'}</div><p class="notice">${esc(match.bullets[2])}</p><h2>Application stage</h2><div class="stage">${stageButtons(id)}</div><p><a class="btn" target="_blank" rel="noopener" href="${esc(safeUrl(job.url))}">Apply on source ↗</a></p>${career ? career.renderJobTools(job) : ''}`;
+    const analysis = match.analysis;
+    const analysisHtml = analysis ? `<h2>Source analysis</h2><p class="notice">Role: ${esc(analysis.role.targetRole || analysis.role.value)} · Location: ${esc(analysis.eligibility.value)}</p><div class="keywords">${analysis.requirements.map(item => `<span class="keyword ${item.classification === 'required' ? 'gap' : ''}">${esc(item.skill)}: ${esc(item.classification)}${item.importance === null ? '' : ` · priority ${item.importance}/3`}</span>`).join('') || '<span class="notice">No source requirements classified.</span>'}</div>` : '<p class="notice">This score uses transparent matching rules. A local source analysis can add requirement context when needed.</p>';
+    $('#drawerContent').innerHTML = `<div class="eyebrow">${esc(match.tier)} MATCH</div><h1>${esc(job.title)}</h1><p>${esc(job.company)} · ${esc(job.location)}</p><div class="score ${match.tier.toLowerCase()}">${match.score}%</div><h2>Score breakdown</h2><div class="breakdown"><span>Skills <b>${match.breakdown.skills}/55</b></span><span>Role <b>${match.breakdown.role}/25</b></span><span>Seniority <b>${match.breakdown.seniority}/10</b></span><span>Preferences <b>${match.breakdown.preferences}/10</b></span></div><h2>Matched evidence</h2><div class="keywords">${match.exact.map(skill => `<span class="keyword match">${esc(skill)}</span>`).join('') || '<span class="notice">No extracted skill evidence yet.</span>'}</div><h2>Requirements to verify</h2><div class="keywords">${match.gaps.map(skill => `<span class="keyword gap">${esc(skill)}</span>`).join('') || '<span class="notice">No obvious gaps detected.</span>'}</div>${analysisHtml}<p class="notice">${esc(match.bullets[2])}</p><h2>Application stage</h2><div class="stage">${stageButtons(id)}</div><p><a class="btn" target="_blank" rel="noopener" href="${esc(safeUrl(job.url))}">Apply on source ↗</a></p>${career ? career.renderJobTools(job) : ''}`;
     document.querySelectorAll('[data-stage]').forEach(button => { button.onclick = () => setStage(Number(button.dataset.jobId), button.dataset.stage); });
     career?.connectJobTools(job);
     $('#drawer').classList.remove('hidden');
@@ -140,7 +180,7 @@ $('#findMatches').onclick = async () => {
     const profile = profileFromForm();
     const resume = profile.keepResume && resumeFile ? { name: resumeFile.name, data: await readResumeFile(resumeFile) } : undefined;
     const result = await api('/api/onboarding/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile, resume }) });
-    const [profileResult, jobsLoaded, statsResult, pipelineResult] = await Promise.allSettled([loadProfile(), loadJobs(), loadStats(), loadPipeline()]);
+    const [profileResult, jobsLoaded, statsResult, pipelineResult] = await Promise.allSettled([loadProfile(), loadJobs(), loadStats(), loadPipeline(), loadReviewJobs()]);
     if (!jobsLoaded.value) return;
     const message = scanFeedback(result.scan);
     setResultsMessage([profileResult, statsResult, pipelineResult].some(item => item.status === 'rejected') ? `${message} Some local data could not be refreshed.` : message);
@@ -153,7 +193,7 @@ $('#backToUpload').onclick = () => showStep('upload');
 $('#backToProfile').onclick = () => showStep('profile');
 $('#scanBtn').onclick = async () => {
   const button = $('#scanBtn'); button.disabled = true; button.textContent = 'Refreshing jobs…';
-  try { const result = await api('/api/scan', { method: 'POST' }); if (await loadJobs()) setResultsMessage(scanFeedback(result)); }
+  try { const result = await api('/api/scan', { method: 'POST' }); if (await loadJobs()) { await loadReviewJobs(); setResultsMessage(scanFeedback(result)); } }
   catch (error) { setResultsMessage(`We could not refresh jobs: ${error.message}`, 'error'); }
   finally { button.disabled = false; button.textContent = 'Refresh jobs'; }
 };
@@ -166,6 +206,6 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape') $('#
 
 showStep('upload');
 career?.bind();
-Promise.allSettled([loadProfile(), loadStats(), loadJobs(), loadPipeline(), career?.load()]).then(results => {
+Promise.allSettled([loadProfile(), loadStats(), loadJobs(), loadReviewJobs(), loadPipeline(), career?.load()]).then(results => {
   if (results.some(result => result.status === 'rejected')) setResultsMessage('Some local data could not load. Refresh jobs to try again.', 'error');
 });

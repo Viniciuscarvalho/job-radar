@@ -17,4 +17,15 @@ if (!documentColumns.includes('job_id')) {
   try { db.exec('ALTER TABLE documents ADD COLUMN job_id INTEGER REFERENCES jobs(id)'); }
   catch (error) { if (!/duplicate column name/i.test(error.message)) throw error; }
 }
+// Migrate provenance without deleting jobs or their application history.
+const jobColumns = db.prepare('PRAGMA table_info(jobs)').all().map(column => column.name);
+for (const [name, definition] of Object.entries({ location_provenance: "TEXT DEFAULT 'source'", search_context: "TEXT DEFAULT ''" })) {
+  if (!jobColumns.includes(name)) db.exec(`ALTER TABLE jobs ADD COLUMN ${name} ${definition}`);
+}
+db.exec(`UPDATE jobs SET location='', region='', location_provenance='search_only', match_score=0,
+  matched_keywords='[]', missing_keywords='[]'
+  WHERE source='Web/ATS via Brave Search' AND location_provenance='source'`);
+db.exec(`CREATE TABLE IF NOT EXISTS judgments (
+  fingerprint TEXT PRIMARY KEY, result TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+)`);
 module.exports = db;

@@ -25,12 +25,14 @@
     return null;
   }
 
-  function scanFeedback({ found = 0, sources = {} } = {}) {
+  function scanFeedback({ found = 0, pending = 0, sources = {} } = {}) {
     const sourceResults = Object.values(sources);
     const unreachable = sourceResults.filter(source => source?.error);
     if (found === 0 && sourceResults.length > 0 && unreachable.length === sourceResults.length) return 'Job sources could not be reached. Your saved jobs are still available; try refreshing again later.';
-    if (found === 0) return 'No eligible jobs were found for your confirmed criteria.';
-    return `${found} eligible ${found === 1 ? 'job was' : 'jobs were'} processed. Jobs outside your required roles or eligibility are excluded.`;
+    if (found === 0 && pending === 0) return 'No eligible jobs were found for your confirmed criteria.';
+    const eligible = `${found} eligible ${found === 1 ? 'job was' : 'jobs were'} processed.`;
+    const review = pending ? ` ${pending} ${pending === 1 ? 'discovery needs' : 'discoveries need'} source review before appearing as eligible.` : '';
+    return `${eligible}${review} Jobs outside your required roles or eligibility are excluded.`;
   }
 
   return { TIERS, filterJobs, emptyState, scanFeedback };
